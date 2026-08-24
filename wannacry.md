@@ -16,6 +16,7 @@ WannaCry relies on a chain of three distinct sets of keys to lock files:
 ## Step-by-Step Encryption Process
 When the malware targets a specific file, it executes the following technical workflow:
 
+```
 [Original File] ----> ( AES-128-CBC Encryption via Random Key ) ----> [Encrypted File Payload]
                                        ^
                                        | (Encrypted by)
@@ -23,7 +24,7 @@ When the malware targets a specific file, it executes the following technical wo
                                        |
                                        v
                         [Encrypted AES Key in Header]
-
+```
 
    1. Generate AES Key: WannaCry uses the Windows CryptoAPI to generate a random 128-bit AES key for the specific target file.
    2. Encrypt File Content: The file content is encrypted using AES-128 in CBC mode. As noted previously, the Initialization Vector (IV) is set to all zeros.
