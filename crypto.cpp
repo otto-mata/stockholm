@@ -5,164 +5,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <cstring>
-
-inline bool filter_extensions(std::string path)
-{
-	for (size_t i = 0; i < stockholm::extensions_count; ++i)
-	{
-		if (path.ends_with(stockholm::extensions[i]))
-			return true;
-	}
-	return false;
-}
-
-//! TODO: Add mode selection encrypt/decrypt
-//! TODO: Add better error handling
-class AES_256_CBC
-{
-
-public:
-	enum MODE
-	{
-		ENCRYPTION,
-		DECRYPTION
-	};
-	AES_256_CBC(unsigned char *_key, unsigned char *_iv, MODE _mode)
-	{
-		memcpy(key, _key, sizeof(key));
-		memcpy(iv, _iv, sizeof(iv));
-		mode = _mode;
-		init = false;
-		error = false;
-		ctx = EVP_CIPHER_CTX_new();
-		cipher = EVP_aes_256_cbc();
-		if (!ctx || !cipher)
-		{
-			ERR_print_errors_fp(stderr);
-			EVP_CIPHER_CTX_free(ctx);
-			return;
-		}
-	}
-
-	~AES_256_CBC()
-	{
-		EVP_CIPHER_CTX_free(ctx);
-	}
-
-	AES_256_CBC &Init()
-	{
-		switch (mode)
-		{
-		case DECRYPTION:
-			initDecryption();
-			break;
-		case ENCRYPTION:
-			initEncryption();
-			break;
-		default:
-			error = true;
-			break;
-		}
-		return *this;
-	}
-	void Decrypt(unsigned char *in, int inl, unsigned char *out, int *outl)
-	{
-		if (mode != DECRYPTION)
-			error = true;
-		if (error)
-			return;
-		int outlen;
-		if (!EVP_DecryptUpdate(ctx, out, outl, in, inl))
-		{
-			ERR_print_errors_fp(stderr);
-			error = true;
-			return;
-		}
-	}
-
-	void FinishDecryption(unsigned char *out, int *outl)
-	{
-		if (mode != DECRYPTION)
-			error = true;
-		if (error)
-			return;
-		int tmplen;
-		if (!EVP_DecryptFinal_ex(ctx, (unsigned char *)((uintptr_t)out + *outl), &tmplen))
-		{
-			ERR_print_errors_fp(stderr);
-			error = true;
-			return;
-		}
-		*outl += tmplen;
-	}
-
-	void Encrypt(unsigned char *in, int inl, unsigned char *out, int *outl)
-	{
-		if (mode != ENCRYPTION)
-			error = true;
-		if (error)
-			return;
-		if (!EVP_EncryptUpdate(ctx, out, outl, in, inl))
-		{
-			ERR_print_errors_fp(stderr);
-			error = true;
-			return;
-		}
-	}
-
-	void FinishEncryption(unsigned char *out, int *outl)
-	{
-		if (mode != ENCRYPTION)
-			error = true;
-		if (error)
-			return;
-		int tmplen;
-		if (!EVP_EncryptFinal_ex(ctx, (unsigned char *)((uintptr_t)out + *outl), &tmplen))
-		{
-			ERR_print_errors_fp(stderr);
-			error = true;
-			return;
-		}
-		*outl += tmplen;
-	}
-
-	void Decrypt()
-	{
-		if (mode != DECRYPTION)
-			error = true;
-		if (error)
-			return;
-	}
-
-private:
-	unsigned char key[32];
-	unsigned char iv[16];
-	bool error;
-	bool init;
-	EVP_CIPHER_CTX *ctx;
-	const EVP_CIPHER *cipher;
-	AES_256_CBC::MODE mode;
-
-	void initEncryption()
-	{
-		if (!EVP_EncryptInit_ex2(ctx, cipher, key, iv, nullptr))
-		{
-			ERR_print_errors_fp(stderr);
-			error = true;
-			return;
-		}
-	}
-
-	void initDecryption()
-	{
-		if (!EVP_DecryptInit_ex2(ctx, cipher, key, iv, nullptr))
-		{
-			ERR_print_errors_fp(stderr);
-			error = true;
-			return;
-		}
-	}
-};
+#include "aes.hpp"
 
 void EncryptFile(fs::path p)
 {
@@ -185,7 +28,7 @@ void EncryptFile(fs::path p)
 
 	AES_256_CBC cipher = AES_256_CBC((uint8_t[]){0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31},
 									 (uint8_t *)"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-									 AES_256_CBC::ENCRYPTION);
+									 AES_256_CBC::EncryptionMode);
 	char in[1024];
 	unsigned char out[1024 + EVP_MAX_BLOCK_LENGTH];
 	int outl;
@@ -225,7 +68,7 @@ void DecryptFile(fs::path p)
 
 	AES_256_CBC cipher = AES_256_CBC((uint8_t[]){0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31},
 									 (uint8_t *)"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-									 AES_256_CBC::DECRYPTION);
+									 AES_256_CBC::DecryptionMode);
 	char in[1024];
 	unsigned char out[1024 + EVP_MAX_BLOCK_LENGTH];
 	int outl;
@@ -244,6 +87,15 @@ void DecryptFile(fs::path p)
 	dec_file.close();
 }
 
+// inline bool filter_extensions(std::string path)
+// {
+// 	for (size_t i = 0; i < stockholm::extensions_count; ++i)
+// 	{
+// 		if (path.ends_with(stockholm::extensions[i]))
+// 			return true;
+// 	}
+// 	return false;
+// }
 // see https://docs.openssl.org/master/man3/EVP_EncryptInit/#examples
 
 // int main(void)
