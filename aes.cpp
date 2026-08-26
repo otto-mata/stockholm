@@ -132,7 +132,8 @@ AES_256_CBC AES_256_CBC::NewCipherWithKey(unsigned char *key, MODE _mode)
 
 size_t AES_256_CBC::SizeOfCipher(size_t clear_size)
 {
-	return (clear_size + 16 - (clear_size % 16));
+	return (clear_size + EVP_CIPHER_get_block_size(EVP_aes_256_cbc()) -
+			(clear_size % EVP_CIPHER_get_block_size(EVP_aes_256_cbc())));
 }
 
 unsigned char *AES_256_CBC::GetKey(void)

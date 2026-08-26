@@ -1,4 +1,5 @@
 #include "Crawler.hpp"
+#include "log.hpp"
 #include <iostream>
 #include <syncstream>
 #include <cstdio>
@@ -7,6 +8,8 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <pwd.h>
+#include <unistd.h>
 
 class thread_data
 {
@@ -130,17 +133,11 @@ public:
 	~Crawler() {}
 };
 
-std::list<std::string> RetrieveFilesInInfectionDirectory(void)
+std::list<std::string> RetrieveFilesFrom(fs::path from)
 {
 	std::list<std::string> lst = std::list<std::string>();
-	char *homedir = std::getenv("HOME");
-	if (!homedir)
-	{
-		std::cerr << "No $HOME" << std::endl;
-		return lst;
-	}
 	thread_data *td = new thread_data();
-	std::thread parent(&Crawler::Run, fs::path{homedir} / "infection", td);
+	std::thread parent(&Crawler::Run, from, td);
 
 	parent.join();
 	for (auto &&file : td->GetFiles())

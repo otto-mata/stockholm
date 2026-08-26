@@ -6,4 +6,4 @@
 
 namespace fs = std::filesystem;
 
-std::list<std::string> RetrieveFilesInInfectionDirectory(void);
+std::list<std::string> RetrieveFilesFrom(fs::path from);
