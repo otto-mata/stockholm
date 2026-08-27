@@ -2,27 +2,26 @@
 #include "stockholm.hpp"
 
 /**
- * @brief Decrypt the data stored in INFILE using an hybrid RSA-AES decryption
+ * @brief Decrypt the data stored in IN using an hybrid RSA-AES decryption
  * @param privkey Path to the RSA private.pem file to decrypt the AES key with
- * @param infile Path to the encrypted file
  * @param header Pointer to header struct, containing informations about the file
- * @param out Buffer that will hold the decrypted content of INFILE
- * @param outl Size of OUT
+ * @param in BIO containing the encrypted data
+ * @param out BIO that will hold the decrypted content of IN
  * @return 1 on SUCCESS, 0 on FAILURE
  */
-int rsa_aes_hybrid_decryption(const char *privkey, const char *infile,
-							  stockholm::header *header, unsigned char **out, int *outl);
+int rsa_aes_hybrid_decryption(const char *privkey,
+							  stockholm::header *header,
+							  BIO *in,
+							  BIO *out);
 
 /**
- * @brief Encrypt IN of INL size data using an hybrid RSA-AES encryption
+ * @brief Encrypt data from IN to OUT using an hybrid RSA-AES encryption
  * @param pubkey Path to the RSA public.pem file to encrypt AES the key with
- * @param outfile Path to the destination file
- * @param in Data to encrypt
- * @param inl Size of the data
+ * @param in BIO containing the data to encrypt
+ * @param out output BIO
  * @return 1 on SUCCESS, 0 on FAILURE
  */
-int rsa_aes_hybrid_encryption(const char *pubkey, const char *outfile,
-							  unsigned char *in, size_t inl);
+int rsa_aes_hybrid_encryption(const char *pubkey, BIO *in, BIO *out);
 
 /**
  * @brief Create a local RSA identity and encrypt the private key

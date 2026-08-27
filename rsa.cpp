@@ -84,6 +84,7 @@ static int pkey_encrypt(const char *path,
 	if (EVP_PKEY_encrypt_init(enc_ctx) < 1)
 	{
 		LogOpenSSLError();
+		EVP_PKEY_free(pub_key);
 		return (0);
 	}
 
@@ -91,6 +92,7 @@ static int pkey_encrypt(const char *path,
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(enc_ctx);
+		EVP_PKEY_free(pub_key);
 		return (0);
 	}
 
@@ -98,6 +100,7 @@ static int pkey_encrypt(const char *path,
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(enc_ctx);
+		EVP_PKEY_free(pub_key);
 		return (0);
 	}
 
@@ -106,6 +109,7 @@ static int pkey_encrypt(const char *path,
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(enc_ctx);
+		EVP_PKEY_free(pub_key);
 		return (0);
 	}
 
@@ -116,11 +120,13 @@ static int pkey_encrypt(const char *path,
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(enc_ctx);
+		EVP_PKEY_free(pub_key);
 		return (0);
 	}
 
 	*outl = tmp_len;
 	EVP_PKEY_CTX_free(enc_ctx);
+	EVP_PKEY_free(pub_key);
 	return (1);
 }
 
@@ -135,18 +141,21 @@ static int pkey_decrypt(const char *path,
 	if (EVP_PKEY_decrypt_init(dec_ctx) < 1)
 	{
 		LogOpenSSLError();
+		EVP_PKEY_free(priv_key);
 		return (0);
 	}
 	if (EVP_PKEY_CTX_set_rsa_padding(dec_ctx, RSA_PKCS1_OAEP_PADDING) < 1)
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(dec_ctx);
+		EVP_PKEY_free(priv_key);
 		return (0);
 	}
 	if (EVP_PKEY_CTX_set_rsa_oaep_md(dec_ctx, EVP_sha256()) < 1)
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(dec_ctx);
+		EVP_PKEY_free(priv_key);
 		return (0);
 	}
 	size_t tmp_len = 0;
@@ -154,6 +163,7 @@ static int pkey_decrypt(const char *path,
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(dec_ctx);
+		EVP_PKEY_free(priv_key);
 		return (0);
 	}
 
@@ -163,108 +173,110 @@ static int pkey_decrypt(const char *path,
 	{
 		LogOpenSSLError();
 		EVP_PKEY_CTX_free(dec_ctx);
+		EVP_PKEY_free(priv_key);
 		return (0);
 	}
 
 	*outl = tmp_len;
 	EVP_PKEY_CTX_free(dec_ctx);
+	EVP_PKEY_free(priv_key);
 	return (1);
 }
 
-int rsa_aes_hybrid_encryption(const char *pubkey,
-							  const char *outfile,
-							  unsigned char *in,
-							  size_t inl)
+int rsa_aes_hybrid_encryption(const char *pubkey, BIO *in, BIO *out)
 {
+	size_t input_length = BIO_ctrl_pending(in);
+	unsigned char *input = new unsigned char[input_length];
+	BIO_read(in, input, input_length);
 
-	// Encrypt with AES 256 CBC, random key
 	AES_256_CBC cipher = AES_256_CBC::NewCipherWithRandomKey(AES_256_CBC::EncryptionMode);
+	printf("Key for encryption: ");
+	print_hex(cipher.GetKey(), 32);
 
-	const size_t dataSize = 16;
-	size_t sizeOfBuffer = AES_256_CBC::SizeOfCipher(dataSize);
-	int bufferl = (int)sizeOfBuffer;
-	unsigned char *buffer = (unsigned char *)OPENSSL_malloc(sizeOfBuffer);
-	std::basic_string<unsigned char> bufferAcc = std::basic_string<unsigned char>();
-	bufferAcc.clear();
-	size_t processed = 0;
-	while (processed < inl - dataSize)
-	{
-		cipher.Encrypt(in + processed, dataSize, buffer, &bufferl);
-		bufferAcc.append(buffer);
-		bzero(buffer, sizeOfBuffer);
-		processed += dataSize;
-	}
-	free(buffer);
-	int encryptedl = bufferAcc.size();
-	unsigned char *encrypted = (unsigned char *)OPENSSL_malloc(encryptedl);
-	memmove(encrypted, bufferAcc.c_str(), encryptedl);
-	cipher.FinishEncryption(encrypted, &encryptedl);
+	// Allocate buffer big enough for ciphertext + padding (up to 1 block extra)
+	int max_encrypted_len = input_length + EVP_CIPHER_get_block_size(EVP_aes_256_cbc());
+	unsigned char *encrypted = new unsigned char[max_encrypted_len];
 
-	// Encrypt the AES key with the Public key
+	int update_len = 0;
+	int final_len = 0;
+
+	// 1. Encrypt all input data in a single call
+	cipher.Encrypt(input, input_length, encrypted, &update_len);
+
+	// 2. Append final padded block at the correct offset
+	cipher.FinishEncryption(encrypted + update_len, &final_len);
+
+	int total_encrypted_len = update_len + final_len;
+	printf("Total enc-data: %d bytes\n", total_encrypted_len);
+
+	// 3. Encrypt the AES key with RSA Public key
 	size_t cipherAesKeyl = 512;
-	unsigned char *cipherAesKey = (unsigned char *)OPENSSL_malloc(cipherAesKeyl);
+	unsigned char *cipherAesKey = new unsigned char[cipherAesKeyl];
 	if (!pkey_encrypt(pubkey, cipher.GetKey(), 32, cipherAesKey, &cipherAesKeyl))
 	{
 		log("Failed to encrypt file");
-		free(encrypted);
+		delete[] input;
+		delete[] encrypted;
+		delete[] cipherAesKey;
 		return (0);
 	}
 
+	// 4. Build and write header
 	stockholm::header *dat = (stockholm::header *)OPENSSL_malloc(sizeof(stockholm::header));
+	memset(dat, 0, sizeof(*dat));
 	memmove(dat->magic, "STOKOLM!", 8);
 	memmove(dat->key, cipherAesKey, cipherAesKeyl);
-	dat->content_size = encryptedl;
-	sha256(in, inl, dat->file_hash);
-	int fd = open(outfile, O_WRONLY | O_TRUNC | O_CREAT, 0644);
-	if (fd < 0)
-	{
-		log("Failed to open outfile");
-		free(encrypted);
-		return (0);
-	}
-	printf("headerp %p\n", dat);
-	write(fd, dat, sizeof(*dat));
+	delete[] cipherAesKey;
+
+	dat->cipher_size = total_encrypted_len;
+	dat->raw_size = input_length;
+	sha256(input, input_length, dat->file_hash);
+	delete[] input;
+
+	// 5. Write Header and Encrypted Stream
+	BIO_write(out, dat, sizeof(*dat));
 	free(dat);
-	write(fd, encrypted, encryptedl);
-	close(fd);
-	free(encrypted);
+	BIO_write(out, encrypted, total_encrypted_len);
+	delete[] encrypted;
+
 	return (1);
 }
 
 int rsa_aes_hybrid_decryption(const char *privkey,
-							  const char *infile,
 							  stockholm::header *header,
-							  unsigned char **out,
-							  int *outl)
+							  BIO *in,
+							  BIO *out)
 {
-	//! FIXME: https://gcc.gnu.org/onlinedocs/libstdc++/manual/fstreams.html#std.io.filestreams.binary
-	std::ifstream file(infile, std::ios::in | std::ios::binary);
-	if (!file.is_open())
-	{
-		log("Failed to open infile");
-		return (0);
-	}
-	file.read((char *)header, sizeof(*header));
-	unsigned char *cipherContent = new unsigned char[header->content_size];
-	file.read((char *)cipherContent, header->content_size);
-	file.close();
+
+	BIO_read(in, header, sizeof(*header));
+	unsigned char *input = new unsigned char[header->cipher_size];
+	BIO_read(in, input, header->cipher_size);
 
 	unsigned char key[32];
 	size_t keyl = 32;
 	if (!pkey_decrypt(privkey, header->key, 512, key, &keyl))
 	{
 		log("Failed to decrypt file");
-		delete[] cipherContent;
+		delete[] input;
 		return (0);
 	}
 	AES_256_CBC cipher = AES_256_CBC::NewCipherWithKey(key, AES_256_CBC::DecryptionMode);
 
-	*outl = header->content_size;
-	*out = new unsigned char[*outl];
+	printf("Key for decryption: ");
+	print_hex(cipher.GetKey(), 32);
 
-	cipher.Decrypt(cipherContent, header->content_size, *out, outl);
-	cipher.FinishDecryption(*out, outl);
-	delete[] cipherContent;
+	unsigned char *out_buffer = new unsigned char[header->cipher_size + 16];
+	int update_len = 0;
+	int final_len = 0;
+
+	// 1. Decrypt update
+	cipher.Decrypt(input, header->cipher_size, out_buffer, &update_len);
+	cipher.FinishDecryption(out_buffer + update_len, &final_len);
+	delete[] input;
+	int total_len = update_len + final_len;
+	size_t actual;
+	BIO_write_ex(out, out_buffer, total_len, &actual);
+	delete[] out_buffer;
 	return (1);
 }
 
@@ -276,28 +288,54 @@ int create_local_rsa_id(const char *master_public_pem)
 		log("Failed to create RSA PKEY");
 		return (0);
 	}
-	void *p;
-	size_t local_privkey_len = i2d_PrivateKey(pkey, NULL);
-	unsigned char *local_privkey = (unsigned char *)OPENSSL_aligned_alloc(local_privkey_len, 16, &p);
-
-	if (i2d_PrivateKey(pkey, &local_privkey) < 0)
+	BIO *mem = BIO_new(BIO_s_mem());
+	if (!mem)
 	{
 		LogOpenSSLError();
 		EVP_PKEY_free(pkey);
 		return (0);
 	}
-	if (!rsa_aes_hybrid_encryption(master_public_pem, "00000000.eky", local_privkey, local_privkey_len))
+	if (!PEM_write_bio_PrivateKey(mem, pkey, NULL, NULL, 0, NULL, NULL))
+	{
+		LogOpenSSLError();
+		EVP_PKEY_free(pkey);
+		return (0);
+	}
+	BIO *out_mem = BIO_new(BIO_s_mem());
+	if (!out_mem)
+	{
+		LogOpenSSLError();
+		EVP_PKEY_free(pkey);
+		return (0);
+	}
+	if (!rsa_aes_hybrid_encryption(master_public_pem, mem, out_mem))
 	{
 		EVP_PKEY_free(pkey);
 		return (0);
 	}
-	FILE *pubkey_fp = fopen("00000000.pky", "w");
+	BIO_free(mem);
+	FILE *pubkey_fp = fopen("00000000.pky", "wb");
 	if (pubkey_fp)
 		PEM_write_PUBKEY(pubkey_fp, pkey);
 	else
 		log(strerror(errno));
-	EVP_PKEY_free(pkey);
 	fclose(pubkey_fp);
+	FILE *privkey_fp = fopen("00000000.eky", "wb");
+	if (!privkey_fp)
+		log(strerror(errno));
+	else
+	{
+		char buffer[1024];
+		size_t len;
+		do
+		{
+			BIO_read_ex(out_mem, buffer, 1024, &len);
+			fwrite(buffer, sizeof(char), len, privkey_fp);
+		} while (len);
+		fclose(privkey_fp);
+	}
+	EVP_PKEY_free(pkey);
+	BIO_free(out_mem);
 	return (1);
 }
 

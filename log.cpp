@@ -13,3 +13,10 @@ void log(const std::string_view message,
 			  << location.function_name() << "`: "
 			  << message << '\n';
 }
+
+void print_hex(unsigned char *data, size_t datal)
+{
+	for (size_t i = 0; i < datal; i++)
+		printf("%x", data[i]);
+	printf("\n");
+}
