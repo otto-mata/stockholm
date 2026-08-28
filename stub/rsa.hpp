@@ -9,7 +9,7 @@
  * @param out BIO that will hold the decrypted content of IN
  * @return 1 on SUCCESS, 0 on FAILURE
  */
-int rsa_aes_hybrid_decryption(const char *privkey,
+int DecryptData_HybridRSA_AES(const char *privkey,
 							  stockholm::header *header,
 							  BIO *in,
 							  BIO *out);
@@ -21,11 +21,15 @@ int rsa_aes_hybrid_decryption(const char *privkey,
  * @param out output BIO
  * @return 1 on SUCCESS, 0 on FAILURE
  */
-int rsa_aes_hybrid_encryption(const char *pubkey, BIO *in, BIO *out);
+int EncryptData_HybridRSA_AES(const char *pubkey, BIO *in, BIO *out);
 
 /**
  * @brief Create a local RSA identity and encrypt the private key
- * @param master_public_pem Path to the public.pem file to encrypt the key with
- * @return 1 on SUCCESS, 0 on FAILURE
+ * @param publicPemPath Path to the public.pem file to encrypt the key with
+ * @param localPublicPemPath Path where to write the local public pem
+ * @param localEncryptedPrivatePemPath Path where to write the local encrypted private pem
+ * @return  1 on SUCCESS, 0 on FAILURE
  */
-int create_local_rsa_id(const char *master_public_pem);
+int CreateLocalRSAIdentity(fs::path publicPemPath,
+						   fs::path localPublicPemPath,
+						   fs::path localEncryptedPrivatePemPath);

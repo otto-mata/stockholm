@@ -3,6 +3,8 @@
 
 namespace stockholm
 {
+	const char *localPrivateKeyFileName = "00000000.eky";
+	const char *localPublicKeyFileName = "00000000.pky";
 	const char *extensions[] = {
 		".der",
 		".pfx",
@@ -185,4 +187,5 @@ namespace stockholm
 	};
 
 	const size_t extensions_count = sizeof(extensions) / sizeof(void *);
+	opts options;
 } // namespace stockholm

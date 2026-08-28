@@ -10,21 +10,21 @@ int sha256(unsigned char *in, unsigned long inl, unsigned char *out)
 	EVP_MD_CTX *context = EVP_MD_CTX_new();
 	if (!context)
 	{
-		log(ERR_reason_error_string(ERR_get_error()));
+		LogOpenSSLError();
 		return (0);
 	}
 
 	if (EVP_DigestInit_ex(context, EVP_sha256(), nullptr) != 1)
 	{
 		EVP_MD_CTX_free(context);
-		log(ERR_reason_error_string(ERR_get_error()));
+		LogOpenSSLError();
 		return (0);
 	}
 
 	if (EVP_DigestUpdate(context, in, inl) != 1)
 	{
 		EVP_MD_CTX_free(context);
-		log(ERR_reason_error_string(ERR_get_error()));
+		LogOpenSSLError();
 		return (0);
 	}
 
@@ -32,7 +32,7 @@ int sha256(unsigned char *in, unsigned long inl, unsigned char *out)
 	if (EVP_DigestFinal_ex(context, out, &hashLen) != 1)
 	{
 		EVP_MD_CTX_free(context);
-		log(ERR_reason_error_string(ERR_get_error()));
+		LogOpenSSLError();
 		return (0);
 	}
 	EVP_MD_CTX_free(context);

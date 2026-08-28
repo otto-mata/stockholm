@@ -33,7 +33,6 @@ private:
 	bool error;
 	bool init;
 	EVP_CIPHER_CTX *ctx;
-	const EVP_CIPHER *cipher;
 	AES_256_CBC::MODE mode;
 
 	void initEncryption();

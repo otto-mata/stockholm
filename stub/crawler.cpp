@@ -15,7 +15,7 @@ class thread_data
 {
 private:
 	std::list<fs::path> files;
-	std::atomic<int> running;
+	std::atomic<unsigned int> running;
 	std::mutex mfiles;
 	std::mutex mstart;
 	unsigned int max_threads;
@@ -40,17 +40,17 @@ public:
 		AddRunning();
 	}
 
-	int CurrentlyRunning(void)
+	unsigned int CurrentlyRunning(void)
 	{
 		return std::atomic_load(&running);
 	}
 
-	int AddRunning(void)
+	unsigned int AddRunning(void)
 	{
 		return std::atomic_fetch_add(&running, 1);
 	}
 
-	int SubRunning(void)
+	unsigned int SubRunning(void)
 	{
 		return std::atomic_fetch_sub(&running, 1);
 	}
@@ -83,7 +83,6 @@ private:
 	std::list<fs::path> files;
 	thread_data *endpoint;
 	bool error;
-	char name[256];
 
 public:
 	Crawler(fs::path target, thread_data *data)
@@ -92,25 +91,24 @@ public:
 		files = std::list<fs::path>();
 		endpoint = data;
 		cwd = target;
-		std::sprintf(name, "Crawler-%02u{%s}", std::this_thread::get_id(), cwd.filename().c_str());
+
 		try
 		{
 			fs::current_path(cwd);
 		}
 		catch (const fs::filesystem_error &e)
 		{
-			std::cerr << name << ": " << e.code().message() << '\n';
 			error = true;
 		}
 	}
 	std::list<fs::path> Glob()
 	{
 		std::list<fs::path> dl;
-		for (fs::directory_entry const &dir_entry : fs::directory_iterator(cwd))
-			if (dir_entry.is_directory() && !dir_entry.is_symlink())
-				dl.push_back(dir_entry.path());
-			else if (dir_entry.is_regular_file() && !dir_entry.is_symlink())
-				files.push_back(dir_entry.path());
+		for (fs::directory_entry const &entry : fs::directory_iterator(cwd))
+			if (entry.is_directory() && !entry.is_symlink())
+				dl.push_back(entry.path());
+			else if (entry.is_regular_file() && !entry.is_symlink())
+				files.push_back(entry.path());
 		endpoint->MergeList(files);
 
 		return dl;
@@ -124,7 +122,7 @@ public:
 		std::list<fs::path> subdirs = instance.Glob();
 		data->SubRunning();
 		std::list<std::jthread> children = std::list<std::jthread>();
-		int i = 0;
+
 		for (auto &&dir : subdirs)
 			children.push_back(std::jthread{&Crawler::Run, dir, data});
 		for (auto &&child : children)
@@ -141,7 +139,7 @@ std::list<std::string> RetrieveFilesFrom(fs::path from)
 
 	parent.join();
 	for (auto &&file : td->GetFiles())
-		lst.push_back(std::string(file.c_str()));
+		lst.push_back(file.string());
 	delete td;
 	return lst;
 }

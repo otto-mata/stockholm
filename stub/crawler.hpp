@@ -3,7 +3,6 @@
 #include <string>
 #include <list>
 #include <filesystem>
-
-namespace fs = std::filesystem;
+#include "stockholm.hpp"
 
 std::list<std::string> RetrieveFilesFrom(fs::path from);
