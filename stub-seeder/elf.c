@@ -56,6 +56,7 @@ int main(int argc, char **argv)
 	shdr = (Elf64_Shdr *)(file_data + ehdr->e_shoff);
 	for (short i = 0; i < ehdr->e_shnum; i++)
 	{
+		printf("@ %p [%d]:\n", (void *)ehdr->e_shoff + (i * sizeof(Elf64_Shdr)), i);
 		__builtin_dump_struct(&shdr[i], printf);
 		print_scn(file_data + shdr[i].sh_offset, shdr[i].sh_size);
 		printf("\n");

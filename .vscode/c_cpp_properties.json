@@ -8,6 +8,7 @@
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
             "cppStandard": "gnu++23",
+            "cStandard": "gnu23",
             "intelliSenseMode": "linux-gcc-x64",
             "configurationProvider": "ms-vscode.cmake-tools"
         }
