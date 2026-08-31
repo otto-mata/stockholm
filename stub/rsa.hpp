@@ -24,6 +24,15 @@ int DecryptData_HybridRSA_AES(const char *privkey,
 int EncryptData_HybridRSA_AES(const char *pubkey, BIO *in, BIO *out);
 
 /**
+ * @brief Encrypt data from IN to OUT using an hybrid RSA-AES encryption
+ * @param key OpenSSL PKEY to use
+ * @param in BIO containing the data to encrypt
+ * @param out output BIO
+ * @return 1 on SUCCESS, 0 on FAILURE
+ */
+int EncryptData_HybridRSA_AES(EVP_PKEY *key, BIO *in, BIO *out);
+
+/**
  * @brief Create a local RSA identity and encrypt the private key
  * @param publicPemPath Path to the public.pem file to encrypt the key with
  * @param localPublicPemPath Path where to write the local public pem
@@ -31,5 +40,16 @@ int EncryptData_HybridRSA_AES(const char *pubkey, BIO *in, BIO *out);
  * @return  1 on SUCCESS, 0 on FAILURE
  */
 int CreateLocalRSAIdentity(fs::path publicPemPath,
+						   fs::path localPublicPemPath,
+						   fs::path localEncryptedPrivatePemPath);
+
+/**
+ * @brief Create a local RSA identity and encrypt the private key
+ * @param masterPublic OpenSSL PKEY to encrypt the private key with
+ * @param localPublicPemPath Path where to write the local public pem
+ * @param localEncryptedPrivatePemPath Path where to write the local encrypted private pem
+ * @return  1 on SUCCESS, 0 on FAILURE
+ */
+int CreateLocalRSAIdentity(EVP_PKEY *masterPublic,
 						   fs::path localPublicPemPath,
 						   fs::path localEncryptedPrivatePemPath);

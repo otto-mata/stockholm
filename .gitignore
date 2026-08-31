@@ -3,4 +3,6 @@
 a.out
 *.pem
 stockholm
+stockholm.patch
 *.o
+patcher

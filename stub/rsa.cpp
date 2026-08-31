@@ -75,17 +75,14 @@ static EVP_PKEY *newRSAKeyPair(void)
 	return pKey;
 }
 
-static int encryptWithKeyPair(const char *path,
+static int encryptWithKeyPair(EVP_PKEY *key,
 							  unsigned char *in,
 							  size_t inl,
 							  unsigned char *out,
 							  size_t *outl)
 {
-	EVP_PKEY *key = loadPublicKey(path);
 	if (!key)
-	{
 		return (0);
-	}
 	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(key, NULL);
 	if (EVP_PKEY_encrypt_init(ctx) < 1)
 	{
@@ -145,6 +142,7 @@ static int decryptWithKeyPair(const char *path,
 	EVP_PKEY *key = loadPrivateKey(path);
 	if (!key)
 	{
+		LogOpenSSLError();
 		return (0);
 	}
 	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(key, NULL);
@@ -195,6 +193,12 @@ static int decryptWithKeyPair(const char *path,
 
 int EncryptData_HybridRSA_AES(const char *pubkey, BIO *in, BIO *out)
 {
+	EVP_PKEY *key = loadPublicKey(pubkey);
+	return EncryptData_HybridRSA_AES(key, in, out);
+}
+
+int EncryptData_HybridRSA_AES(EVP_PKEY *key, BIO *in, BIO *out)
+{
 	size_t inputLength = BIO_ctrl_pending(in);
 	unsigned char *input = new unsigned char[inputLength];
 	BIO_read(in, input, inputLength);
@@ -211,7 +215,7 @@ int EncryptData_HybridRSA_AES(const char *pubkey, BIO *in, BIO *out)
 	int totalEncryptedLen = updateLen + finalLen;
 	size_t cipherAesKeyLength = 512;
 	unsigned char *cipherAesKey = new unsigned char[cipherAesKeyLength];
-	if (!encryptWithKeyPair(pubkey, cipher.GetKey(), 32, cipherAesKey, &cipherAesKeyLength))
+	if (!encryptWithKeyPair(key, cipher.GetKey(), 32, cipherAesKey, &cipherAesKeyLength))
 	{
 		Error("Failed to encrypt file");
 		delete[] input;
@@ -246,37 +250,52 @@ int DecryptData_HybridRSA_AES(const char *privkey,
 							  BIO *in,
 							  BIO *out)
 {
-
-	BIO_read(in, header, sizeof(*header));
-	unsigned char *input = new unsigned char[header->cipherSize];
-	BIO_read(in, input, header->cipherSize);
-
-	unsigned char key[32];
-	size_t keyl = 32;
-	if (!decryptWithKeyPair(privkey, header->key, 512, key, &keyl))
+	try
 	{
-		Log("Failed to decrypt file");
+		BIO_read(in, header, sizeof(*header));
+		unsigned char *input = new unsigned char[header->cipherSize];
+		BIO_read(in, input, header->cipherSize);
+
+		unsigned char key[32];
+		size_t keyl = 32;
+		if (!decryptWithKeyPair(privkey, header->key, 512, key, &keyl))
+		{
+			Error("Failed to decrypt file");
+			delete[] input;
+			return (0);
+		}
+		AES_256_CBC cipher = AES_256_CBC::NewCipherWithKey(key, AES_256_CBC::DecryptionMode);
+
+		unsigned char *aesDecryptionOutput = new unsigned char[header->cipherSize + 16];
+		int updateLen = 0;
+		int finalLen = 0;
+
+		// 1. Decrypt update
+		cipher.Decrypt(input, header->cipherSize, aesDecryptionOutput, &updateLen);
+		cipher.FinishDecryption(aesDecryptionOutput + updateLen, &finalLen);
 		delete[] input;
+		int totalLen = updateLen + finalLen;
+		size_t actual;
+		BIO_write_ex(out, aesDecryptionOutput, totalLen, &actual);
+		delete[] aesDecryptionOutput;
+		return (1);
+	}
+	catch (std::exception &e)
+	{
+		Error(e.what());
 		return (0);
 	}
-	AES_256_CBC cipher = AES_256_CBC::NewCipherWithKey(key, AES_256_CBC::DecryptionMode);
-
-	unsigned char *aesDecryptionOutput = new unsigned char[header->cipherSize + 16];
-	int updateLen = 0;
-	int finalLen = 0;
-
-	// 1. Decrypt update
-	cipher.Decrypt(input, header->cipherSize, aesDecryptionOutput, &updateLen);
-	cipher.FinishDecryption(aesDecryptionOutput + updateLen, &finalLen);
-	delete[] input;
-	int totalLen = updateLen + finalLen;
-	size_t actual;
-	BIO_write_ex(out, aesDecryptionOutput, totalLen, &actual);
-	delete[] aesDecryptionOutput;
-	return (1);
 }
 
 int CreateLocalRSAIdentity(fs::path publicPemPath,
+						   fs::path localPublicPemPath,
+						   fs::path localEncryptedPrivatePemPath)
+{
+	EVP_PKEY *key = loadPublicKey(publicPemPath.c_str());
+	return CreateLocalRSAIdentity(key, localPublicPemPath, localEncryptedPrivatePemPath);
+}
+
+int CreateLocalRSAIdentity(EVP_PKEY *masterPublic,
 						   fs::path localPublicPemPath,
 						   fs::path localEncryptedPrivatePemPath)
 {
@@ -306,7 +325,7 @@ int CreateLocalRSAIdentity(fs::path publicPemPath,
 		EVP_PKEY_free(pKey);
 		return (0);
 	}
-	if (!EncryptData_HybridRSA_AES(publicPemPath.c_str(), privateKeyMemBIO, encryptedPrivateKeyMemBIO))
+	if (!EncryptData_HybridRSA_AES(masterPublic, privateKeyMemBIO, encryptedPrivateKeyMemBIO))
 	{
 		Error(std::format("Failed to encrypt private key during RSA identity creation"));
 		EVP_PKEY_free(pKey);

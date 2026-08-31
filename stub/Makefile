@@ -1,8 +1,8 @@
 TARGET := stockholm
 CXX := g++
-CXXFLAGS := -std=gnu++23 -Wall -Wextra -Werror
+CXXFLAGS := -std=gnu++23 -Wall -Wextra -Werror -ggdb -rdynamic
 LDFLAGS := -lcrypto
-SOURCE := aes.cpp crawler.cpp log.cpp main.cpp opts.cpp rsa.cpp sha.cpp stockholm.cpp
+SOURCE := aes.cpp crawler.cpp log.cpp main.cpp opts.cpp rsa.cpp sha.cpp stockholm.cpp ossl.cpp
 OBJS := $(SOURCE:.cpp=.o)
 
 all: $(TARGET)

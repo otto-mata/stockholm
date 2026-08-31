@@ -34,7 +34,7 @@ opts::opts(int argc, char **argv)
 
 	reverse = false;
 	silent = false;
-	keyfilePath = fs::path();
+	keyfilePath = fs::path("/");
 	version = false;
 
 	opterr = 0;
@@ -101,12 +101,13 @@ opts::opts(int argc, char **argv)
 		print_usage();
 		exit(0);
 	}
+	keyfilePath = fs::canonical(keyfilePath);
 }
 
 opts::opts(const opts &rhs)
 {
 	reverse = rhs.reverse;
-	keyfilePath.assign(rhs.keyfilePath);
+	keyfilePath.assign(fs::canonical(rhs.keyfilePath));
 	silent = rhs.silent;
 	version = rhs.version;
 }
@@ -116,7 +117,7 @@ opts &opts::operator=(const opts &rhs)
 	if (&rhs == this)
 		return (*this);
 	reverse = rhs.reverse;
-	keyfilePath.assign(rhs.keyfilePath);
+	keyfilePath.assign(fs::canonical(rhs.keyfilePath));
 	silent = rhs.silent;
 	version = rhs.version;
 	return (*this);
